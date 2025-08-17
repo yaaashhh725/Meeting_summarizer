@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Summarizer</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue.js for interactivity -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        /* A little custom style for the loader */
+        .loader {
+            border-top-color: #3498db;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-800">
+
+    <div id="app" class="container mx-auto p-4 sm:p-6 md:p-8 max-w-4xl">
+
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">Meeting Summarizer Agent</h1>
+            <p class="text-lg text-gray-600 mt-2">Paste your transcript, get a summary, and share it instantly.</p>
+        </header>
+
+        <main class="bg-white p-6 rounded-2xl shadow-lg">
+
+            <!-- Step 1: Input Transcript and Prompt -->
+            <div class="mb-6">
+                <h2 class="text-2xl font-semibold mb-3 text-gray-700">Step 1: Provide the Details</h2>
+                
+                <!-- Transcript Text Area -->
+                <div class="mb-4">
+                    <label for="transcript" class="block text-sm font-medium text-gray-600 mb-1">Meeting Transcript</label>
+                    <textarea 
+                        id="transcript"
+                        v-model="transcript"
+                        rows="10"
+                        placeholder="Paste the full meeting transcript here..."
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
+                    ></textarea>
+                </div>
+
+                <!-- Custom Prompt Input -->
+                <div>
+                    <label for="prompt" class="block text-sm font-medium text-gray-600 mb-1">Custom Prompt (Optional)</label>
+                    <input 
+                        type="text"
+                        id="prompt"
+                        v-model="customPrompt"
+                        placeholder="e.g., 'Highlight only the action items' or 'Summarize for an executive'"
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition duration-200"
+                    />
+                </div>
+            </div>
+
+            <!-- Generate Summary Button -->
+            <div class="text-center mb-6">
+                <button 
+                    @click="generateSummary"
+                    :disabled="isLoading"
+                    class="bg-blue-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-all duration-300 ease-in-out transform hover:scale-105 flex items-center justify-center mx-auto"
+                >
+                    <span v-if="!isLoading">Generate Summary</span>
+                    <div v-else class="flex items-center">
+                        <div class="loader w-5 h-5 rounded-full border-2 border-t-2 border-gray-200 mr-2"></div>
+                        <span>Generating...</span>
+                    </div>
+                </button>
+            </div>
+
+            <!-- Error Message Display -->
+            <div v-if="errorMessage" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
+                <strong class="font-bold">Oops!</strong>
+                <span class="block sm:inline">{{ errorMessage }}</span>
+            </div>
+
+            <!-- Step 2: Review and Edit Summary -->
+            <div v-if="summary" class="mb-6">
+                <h2 class="text-2xl font-semibold mb-3 text-gray-700">Step 2: Review & Edit Summary</h2>
+                <textarea 
+                    v-model="summary"
+                    rows="12"
+                    class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-200"
+                ></textarea>
+            </div>
+
+            <!-- Step 3: Share via Email -->
+            <div v-if="summary" class="border-t pt-6">
+                <h2 class="text-2xl font-semibold mb-3 text-gray-700">Step 3: Share via Email</h2>
+                <div class="flex flex-col sm:flex-row items-center gap-3">
+                    <input 
+                        type="email"
+                        v-model="recipientEmail"
+                        placeholder="Recipient's email address"
+                        class="flex-grow w-full sm:w-auto p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-200"
+                    />
+                    <button 
+                        @click="sendEmail"
+                        :disabled="isSendingEmail"
+                        class="bg-purple-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-purple-700 disabled:bg-purple-300 disabled:cursor-not-allowed transition-all duration-300 ease-in-out w-full sm:w-auto flex items-center justify-center"
+                    >
+                        <span v-if="!isSendingEmail">Send Email</span>
+                        <div v-else class="flex items-center">
+                            <div class="loader w-5 h-5 rounded-full border-2 border-t-2 border-gray-200 mr-2"></div>
+                            <span>Sending...</span>
+                        </div>
+                    </button>
+                </div>
+                 <!-- Success Message Display -->
+                <p v-if="successMessage" class="text-green-600 mt-3 text-center sm:text-left">{{ successMessage }}</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        createApp({
+            setup() {
+                // --- State Management ---
+                // Holds the text for the transcript, prompt, summary, etc.
+                const transcript = ref('');
+                const customPrompt = ref('');
+                const summary = ref('');
+                const recipientEmail = ref('');
+                
+                // --- UI State ---
+                // Manages loading states for buttons and displays messages
+                const isLoading = ref(false);
+                const isSendingEmail = ref(false);
+                const errorMessage = ref('');
+                const successMessage = ref('');
+
+                // The URL for our Flask backend.
+                // Make sure your Flask server is running on this address.
+                const API_BASE_URL = 'http://127.0.0.1:5000';
+
+                // --- Methods ---
+
+                /**
+                 * Clears any previous error or success messages.
+                 * This is called before making a new API request.
+                 */
+                const clearMessages = () => {
+                    errorMessage.value = '';
+                    successMessage.value = '';
+                };
+
+                /**
+                 * Calls the backend API to generate the summary.
+                 */
+                const generateSummary = async () => {
+                    if (!transcript.value.trim()) {
+                        errorMessage.value = "Please paste a transcript before generating a summary.";
+                        return;
+                    }
+                    
+                    clearMessages();
+                    isLoading.value = true;
+                    summary.value = ''; // Clear previous summary
+
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/api/summarize`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                transcript: transcript.value,
+                                prompt: customPrompt.value,
+                            }),
+                        });
+
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        summary.value = data.summary;
+
+                    } catch (error) {
+                        console.error('Error generating summary:', error);
+                        errorMessage.value = `Failed to generate summary. ${error.message}`;
+                    } finally {
+                        isLoading.value = false;
+                    }
+                };
+
+                /**
+                 * Calls the backend API to send the summary via email.
+                 */
+                const sendEmail = async () => {
+                    if (!recipientEmail.value.trim()) {
+                        errorMessage.value = "Please enter a recipient's email address.";
+                        return;
+                    }
+
+                    clearMessages();
+                    isSendingEmail.value = true;
+
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/api/send-email`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                recipientEmail: recipientEmail.value,
+                                summary: summary.value,
+                            }),
+                        });
+
+                        if (!response.ok) {
+                            const errorData = await response.json();
+                            throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        successMessage.value = data.message;
+                        recipientEmail.value = ''; // Clear email input on success
+
+                    } catch (error) {
+                        console.error('Error sending email:', error);
+                        errorMessage.value = `Failed to send email. ${error.message}`;
+                    } finally {
+                        isSendingEmail.value = false;
+                    }
+                };
+
+                // Expose the state and methods to the template
+                return {
+                    transcript,
+                    customPrompt,
+                    summary,
+                    recipientEmail,
+                    isLoading,
+                    isSendingEmail,
+                    errorMessage,
+                    successMessage,
+                    generateSummary,
+                    sendEmail,
+                };
+            },
+        }).mount('#app');
+    </script>
+
+</body>
+</html>
