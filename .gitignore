@@ -2,3 +2,4 @@
 .venv
 vercel.json
 test.txt
+.vercel

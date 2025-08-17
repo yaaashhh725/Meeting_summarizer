@@ -5,7 +5,7 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib import response
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
@@ -43,12 +43,12 @@ def generate_summary(full_prompt):
     generate_content_config = types.GenerateContentConfig(
     )
 
-    response = client.generate_content(
+    response = client.models.generate_content(
         model=model,
         contents=contents,
-        generate_content_config=generate_content_config,
+        config=generate_content_config,
     )
-    print(response.text)
+    return response
 
 # Change according to new library
 
@@ -75,7 +75,7 @@ def index():
     """
     A simple route to check if the server is running.
     """
-    return "Meeting Summarizer Backend is running!"
+    return render_template("index.html")
 
 
 @app.route("/api/summarize", methods=["POST"])
